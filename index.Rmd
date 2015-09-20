@@ -1,0 +1,105 @@
+#Predict how well an activity was performed - Coursera Practical Machine Learning Course Project#
+
+##Synopsis##
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. We need to create a report describing how we built the model, how we used cross validation,  the expected out of sample error is, and why we made the choices you did. We need to use the prediction model to predict 20 different test cases. 
+
+##Data##
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+##Loading the data and initial preprocessing##
+
+A preliminary examination of the data indicates several missing values and '#DIV/0!'. The first step is to set all missing and '#DIV/0!' values to 'NA'. The next step is to remove all 'NA' values from the dataset
+```{r step1}
+
+df.train <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+df.train <- df.train[,colSums(is.na(df.train)) == 0]
+
+df.test <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+df.test <- df.test[,colSums(is.na(df.test)) == 0]
+
+dim(df.train)
+dim(df.test)
+
+```
+After the datasets have cleaned up, there are now 19622 observations of 60 variables in the training set and 20 observations of 60 variables in the test set.
+
+##Exploratory Data Analysis##
+
+A preliminary exploratory data analysis indicates the first 7 variables in the testing as well as training datasets are probably not relevant to the prediction model. The following code removes the first 7 seven columns from the training as well as testing datasets leaving 53 variables. The 'classe' variable in the training set is the outcome variable that will be used to predict the manner in which the exercise was performed.
+
+```{r step2}
+df.train <- df.train[,-(1:7), drop=FALSE] 
+df.test <- df.test[,-(1:7), drop=FALSE] 
+dim(df.train)
+dim(df.test)
+```
+
+Let us look the variable names in the training and testing sets
+```{r step3}
+names(df.train)
+names(df.test)
+```
+
+##Splitting the Training Dataset##
+The training dataset is very large and it will take a long time to process it. One way to approach this issue is to split the current training dataset into training (60% - 11776 observations) and testing (40% - 7846 observations) subsets and use the provided 20 sample testing dataset as the validation set.
+
+```{r step4}
+library(caret)
+set.seed(300)
+inTrain <- createDataPartition(y=df.train$classe, p=0.60, list=FALSE)
+training <- df.train[inTrain,]
+testing <- df.train[-inTrain,]
+
+dim(training)
+dim(testing)
+```
+
+##Model Fitting and k-fold Cross Validation##
+Preliminary analysis indicates the Random Forest method of classification is a good fit. It is one of the mostly widely used and highly accurate models used for prediction. 3 fold cross-validation is used.
+
+We will use the trainControl() function to generate parameters that further control how models are created, and then use the train() function to fit the model
+
+```{r step5, cache=TRUE}
+set.seed(300)
+fitC <- trainControl(method="cv", number=3, verboseIter=F)
+
+modelFit <- train(classe ~ ., data=training, method="rf", trControl=fitC)
+modelFit
+```
+
+##Model Prediction##
+We use the modelFit object that we got in the earlier step and pass it to the predict function along with our testing dataset. We evaluate whether model fit worked by using the confusionMatrix function.
+```{r step6, cache=TRUE}
+predictions <- predict(modelFit, testing)
+confusionMatrix(testing$classe, predictions)
+```
+
+##Out of Sample Error and Accuracy#
+The accuracy of the above model is **0.9922** and the out of sample error (calculated as 1-accuracy) is **0.0078**. This indicates the random forest model is an excellent model with high accuracy.
+
+##Applying Model to Test Set##
+Now we will apply the above model to the original test data with 20 observations. The problem_id field is redundant so we will drop the field. Then we will will write the predictions to individual files
+```{r step 7}
+df.test <- df.test[,-(53), drop=FALSE] 
+final <- predict(modelFit, df.test)
+
+# convert predictions to character vector
+final <- as.character(final)
+
+# create function to write predictions to files
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+# create prediction files to submit
+pml_write_files(final)
+```
